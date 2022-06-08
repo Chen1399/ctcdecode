@@ -54,13 +54,12 @@ std::vector<std::pair<size_t, float>> get_pruned_log_probs(
 
 
     if (log_cutoff_prob < 0.0){
-      double cum_prob = prob_idx_sort[0].second;
-      cutoff_len = 0;
-      for (size_t i = 0; i < prob_idx_sort.size(); ++i) {
+      double cum_prob = log_input ? prob_idx_sort[0].second : log(prob_idx_sort[0].second);
+      cutoff_len = 1;
+      for (size_t i = 1; i < prob_idx_sort.size(); ++i) {
+        if (cum_prob >= log_cutoff_prob) break;
         cum_prob = log_sum_exp(cum_prob, log_input ? prob_idx_sort[i].second : log(prob_idx_sort[i].second));
         cutoff_len += 1;
-        
-        if (cum_prob >= log_cutoff_prob) break;
       }
     }else{
       cutoff_len = cutoff_top_n;

@@ -9,38 +9,72 @@ std::vector<std::pair<size_t, float>> get_pruned_log_probs(
     double cutoff_prob,
     size_t cutoff_top_n,
     int log_input) {
-  std::vector<std::pair<int, double>> prob_idx;
-  double log_cutoff_prob = log(cutoff_prob);
-  for (size_t i = 0; i < prob_step.size(); ++i) {
-    prob_idx.push_back(std::pair<int, double>(i, prob_step[i]));
-  }
-  // pruning of vacobulary
   size_t cutoff_len = prob_step.size();
-  if (log_cutoff_prob < 0.0 || cutoff_top_n < cutoff_len) {
-    std::sort(
-        prob_idx.begin(), prob_idx.end(), pair_comp_second_rev<int, double>);
-    if (log_cutoff_prob < 0.0) {
-      double cum_prob = 0.0;
+  double log_cutoff_prob = log(cutoff_prob);
+
+  std::vector<std::pair<int, double>> get_prob_idx;
+  if(log_cutoff_prob < 0.0 || cutoff_top_n < cutoff_len){
+    std::vector<std::pair<int, double>> prob_idx_sort;
+    double max_half = std::log(0.5);
+    double max_pre = 1;
+    double max_sum = 0.0;
+    int sort_id_set[cutoff_top_n];
+    for(int i = 0; i < cutoff_top_n; i++){
+      sort_id_set[i] = -1;
+    }
+    for(int i = 0; i < cutoff_top_n; i++){
+      double max = -NUM_FLT_INF;
+      int max_id = 0;
+      for(int j = 0; j < cutoff_len; j++){
+        if(prob_step[j] > max && prob_step[j] <= max_pre){
+          if(prob_step[j] == max_pre){
+            bool isPre = false;
+            for(int k = 0; k < i; k++){
+              if(sort_id_set[k] == j){
+                isPre = true;
+                break;
+              }
+            }
+            if(isPre) continue;
+          }
+          max = prob_step[j];
+          max_id = j;
+          if(max >= max_half) break;
+        } 
+      }
+      std::pair<int,double> sortMax;
+      sortMax.first = max_id;
+      sortMax.second = prob_step[max_id];
+      prob_idx_sort.push_back(sortMax);
+      max_sum += std::exp(max);
+      max_half = std::log((1 - max_sum) / 2);
+      max_pre = max;
+      sort_id_set[i] = max_id;
+    }
+
+
+    if (log_cutoff_prob < 0.0){
+      double cum_prob = prob_idx_sort[0].second;
       cutoff_len = 0;
-      for (size_t i = 0; i < prob_idx.size(); ++i) {
-        cum_prob = log_sum_exp(cum_prob, log_input ? prob_idx[i].second : log(prob_idx[i].second) );
+      for (size_t i = 0; i < prob_idx_sort.size(); ++i) {
+        cum_prob = log_sum_exp(cum_prob, log_input ? prob_idx_sort[i].second : log(prob_idx_sort[i].second));
         cutoff_len += 1;
-        if (cum_prob >= cutoff_prob || cutoff_len >= cutoff_top_n) break;
+        
+        if (cum_prob >= log_cutoff_prob) break;
       }
     }else{
       cutoff_len = cutoff_top_n;
     }
-    prob_idx = std::vector<std::pair<int, double>>(
-        prob_idx.begin(), prob_idx.begin() + cutoff_len);
+     get_prob_idx = std::vector<std::pair<int, double>>(
+        prob_idx_sort.begin(), prob_idx_sort.begin() + cutoff_len);
   }
   std::vector<std::pair<size_t, float>> log_prob_idx;
   for (size_t i = 0; i < cutoff_len; ++i) {
     log_prob_idx.push_back(std::pair<int, float>(
-        prob_idx[i].first, log_input ? prob_idx[i].second : log(prob_idx[i].second + NUM_FLT_MIN)));
+        get_prob_idx[i].first, log_input ? (float)(get_prob_idx[i].second) : (float)(log(get_prob_idx[i].second + NUM_FLT_MIN))));
   }
   return log_prob_idx;
 }
-
 
 std::vector<std::pair<double, Output>> get_beam_search_result(
     const std::vector<PathTrie *> &prefixes,
